@@ -1,0 +1,13 @@
+{
+  "type": "sigsum",
+  "policy": "AAEDBkZEryq9QPSJWgA7yjUPnVkSqzAaScd_E-W22QXCCl_mHCX4pExjVFfi45HR77yn1MKVGgrvBiJaiB5GuYlirGz0hVoPRuij4ju0D68mDuV6uKGCSfpALyyi0opg4aMTDijJKlo6BU0xfIb8LutqerIFTWIXEA0L5n3tW3QyPFgGQEEBQgGC",
+  "signers": [
+    "sD6bylkXjk-ztHxOMouSa-j1ClKFWj0SOCgdD6Kl0D8"
+  ],
+  "threshold": 1,
+  "max_age": 15778463,
+  "cas_url": "https://none",
+  "logs": {
+    "RkSvKr1A9IlaADvKNQ-dWRKrMBpJx38T5bbZBcIKX-Y": "https://test.sigsum.org/barreleye"
+  }
+}
