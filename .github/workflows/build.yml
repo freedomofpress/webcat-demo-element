@@ -1,0 +1,65 @@
+name: Build and sign latest Element
+
+on:
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Replace Element files with the latest release
+        run: |
+          set -euo pipefail
+          TAG="$(curl -fsSL https://api.github.com/repos/element-hq/element-web/releases/latest | jq -r .tag_name)"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          curl -fsSL -o /tmp/element.tar.gz "https://github.com/element-hq/element-web/releases/download/$TAG/element-$TAG.tar.gz"
+          # Everything except the WEBCAT files and our overrides comes from the tarball.
+          git ls-files -z | grep -zvE '^(\.github/|\.well-known/|_headers$|config\.json$|error\.html$|webcat\.config\.json$)' | xargs -0 git rm -q --
+          tar xzf /tmp/element.tar.gz --strip-components=1
+          rm -f config.sample.json
+          jq --arg v "${TAG#v}" '.version = $v' webcat.config.json > /tmp/cfg && mv /tmp/cfg webcat.config.json
+        id: element
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # Dotfolder so `manifest generate` skips it.
+      - uses: actions/checkout@v4
+        with:
+          repository: freedomofpress/webcat-cli
+          path: .webcat-cli
+
+      - name: Build webcat-cli
+        working-directory: .webcat-cli
+        run: npm ci && npm run build
+
+      - name: Generate, sign and bundle the WEBCAT manifest
+        run: |
+          set -euo pipefail
+          CLI="node .webcat-cli/dist/cli.cjs"
+          M=.well-known/webcat/manifest.json
+          $CLI manifest generate --type sigstore -c webcat.config.json -d . -o "$M"
+          TOKEN="$(curl -fsSL -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sigstore" | jq -r .value)"
+          $CLI manifest sign --type sigstore -i "$M" -o "$M" --oidc-token "$TOKEN"
+          $CLI bundle create -e .well-known/webcat/enrollment.json -m "$M" -o .well-known/webcat/bundle.json
+          $CLI manifest verify .well-known/webcat/bundle.json
+
+      - name: Commit
+        run: |
+          set -euo pipefail
+          rm -rf .webcat-cli
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "Build Element ${{ steps.element.outputs.tag }}"
+          git push
