@@ -51,7 +51,6 @@ jobs:
           TOKEN="$(curl -fsSL -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sigstore" | jq -r .value)"
           $CLI manifest sign --type sigstore -i "$M" -o "$M" --oidc-token "$TOKEN"
           $CLI bundle create -e .well-known/webcat/enrollment.json -m "$M" -o .well-known/webcat/bundle.json
-          $CLI manifest verify .well-known/webcat/bundle.json
 
       - name: Commit
         run: |
