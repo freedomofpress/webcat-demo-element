@@ -15,7 +15,7 @@ jobs:
           node-version: 22
       - name: Install webcat-cli
         run: |
-          git clone -q --depth 1 -b schema-1-history-fixes https://github.com/freedomofpress/webcat-cli /tmp/webcat-cli
+          git clone -q --depth 1 -b schema-1 https://github.com/freedomofpress/webcat-cli /tmp/webcat-cli
           (cd /tmp/webcat-cli && npm ci && npm run build)
           npm install -g /tmp/webcat-cli
       - run: webcat site check element.demo.webcat.tech
