@@ -1,8 +1,13 @@
 {
-  "app": "https://github.com/element-hq/element-web",
-  "version": "1.12.33",
-  "default_csp": "default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'; img-src * blob: data:; connect-src * blob:; font-src 'self' data: ; media-src * blob: data:; child-src blob: data:; worker-src 'self'; frame-src blob: data:; form-action 'self'; manifest-src 'self'; frame-ancestors 'self'",
+  "version": "v1.12.33",
+  "origin": "https://element.demo.webcat.tech",
+  "source": "https://github.com/freedomofpress/webcat-demo-element",
+  "artifact": "https://github.com/freedomofpress/webcat-demo-element/releases/download/${version}/site-${version}.tar.gz",
+  "directory": ".",
+  "default_csp": "default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'; img-src * blob: data:; connect-src * blob:; font-src 'self' data:; media-src * blob: data:; child-src blob: data:; worker-src 'self'; frame-src blob: data:; form-action 'self'; manifest-src 'self'; frame-ancestors 'self'; sandbox allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads",
   "default_index": "index.html",
-  "default_fallback": "/error.html",
+  "fallbacks": [
+    "/error.html"
+  ],
   "extra_csp": {}
 }

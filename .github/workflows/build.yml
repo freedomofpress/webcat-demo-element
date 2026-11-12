@@ -6,59 +6,73 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  id-token: write
+  contents: write     # push the build, publish the archive under its tag
+  id-token: write     # the Sigstore identity the enrollment names
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
-      - name: Replace Element files with the latest release
+      - name: Pick the latest Element release
+        id: element
         run: |
           set -euo pipefail
           TAG="$(curl -fsSL https://api.github.com/repos/element-hq/element-web/releases/latest | jq -r .tag_name)"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "$TAG is released already"
+            echo "done=true" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Replace Element files with that release
+        if: steps.element.outputs.done != 'true'
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.element.outputs.tag }}"
           curl -fsSL -o /tmp/element.tar.gz "https://github.com/element-hq/element-web/releases/download/$TAG/element-$TAG.tar.gz"
           # Everything except the WEBCAT files and our overrides comes from the tarball.
-          git ls-files -z | grep -zvE '^(\.github/|\.well-known/|_headers$|config\.json$|error\.html$|webcat\.config\.json$)' | xargs -0 git rm -q --
+          git ls-files -z | grep -zvE '^(\.github/|\.gitignore$|\.well-known/|_headers$|config\.json$|error\.html$|webcat\.config\.json$)' | xargs -0 git rm -q --
           tar xzf /tmp/element.tar.gz --strip-components=1
           rm -f config.sample.json
-          jq --arg v "${TAG#v}" '.version = $v' webcat.config.json > /tmp/cfg && mv /tmp/cfg webcat.config.json
-        id: element
+          jq --arg v "$TAG" '.version = $v' webcat.config.json > /tmp/cfg && mv /tmp/cfg webcat.config.json
 
       - uses: actions/setup-node@v4
+        if: steps.element.outputs.done != 'true'
         with:
-          node-version: "20"
+          node-version: 22
 
-      # Dotfolder so `manifest generate` skips it.
-      - uses: actions/checkout@v4
-        with:
-          repository: freedomofpress/webcat-cli
-          path: .webcat-cli
+      # The CLI under test, from its branch. A published version is: npm install -g @freedomofpress/webcat-cli@<version>
+      - name: Install webcat-cli
+        if: steps.element.outputs.done != 'true'
+        run: |
+          git clone -q --depth 1 -b schema-1-history-fixes https://github.com/freedomofpress/webcat-cli /tmp/webcat-cli
+          (cd /tmp/webcat-cli && npm ci && npm run build)
+          npm install -g /tmp/webcat-cli
 
-      - name: Build webcat-cli
-        working-directory: .webcat-cli
-        run: npm ci && npm run build
+      # Inherits the history (the previous release's archive, else what the site serves), generates and signs the
+      # manifest in Rekor v2 with a TSA timestamp, writes the well-known files and the archive. The tag is created
+      # below, once the build is committed, so the tag-at-HEAD check is skipped here.
+      - name: Release
+        if: steps.element.outputs.done != 'true'
+        run: webcat release --type sigstore --skip-git-checks
 
-      - name: Generate, sign and bundle the WEBCAT manifest
+      - name: Commit, push, publish the archive under the tag
+        if: steps.element.outputs.done != 'true'
         run: |
           set -euo pipefail
-          CLI="node .webcat-cli/dist/cli.cjs"
-          M=.well-known/webcat/manifest.json
-          $CLI manifest generate --type sigstore -c webcat.config.json -d . -o "$M"
-          TOKEN="$(curl -fsSL -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sigstore" | jq -r .value)"
-          $CLI manifest sign --type sigstore -i "$M" -o "$M" --oidc-token "$TOKEN"
-          $CLI bundle create -e .well-known/webcat/enrollment.json -m "$M" -o .well-known/webcat/bundle.json
-
-      - name: Commit
-        run: |
-          set -euo pipefail
-          rm -rf .webcat-cli
+          TAG="${{ steps.element.outputs.tag }}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git diff --cached --quiet && exit 0
-          git commit -m "Build Element ${{ steps.element.outputs.tag }}"
+          git diff --cached --quiet || git commit -m "Build Element $TAG"
           git push
+          gh release create "$TAG" "site-$TAG.tar.gz" --generate-notes --target "$(git rev-parse HEAD)"
+        env:
+          GH_TOKEN: ${{ github.token }}
